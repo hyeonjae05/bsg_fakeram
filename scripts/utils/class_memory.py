@@ -24,35 +24,23 @@ class Memory:
     self.depth          = int(sram_data['depth'])
     self.num_banks      = int(sram_data['banks'])
     self.cache_type     = str(sram_data['type']) if 'type' in sram_data else 'cache'
+    self.has_wmask      = False if str(sram_data.get('no_wmask', "")) == "true" else True
+    self.banking_technique = str(sram_data.get('banking_technique', 'width'))
     
-    # Port configuration - default to 1RW if not specified
-    self.port_config    = str(sram_data.get('ports', '1rw'))
-    
-    # Handle different port configurations
-    if self.port_config == '1rw1r':
-      self.rw_ports = 1
-      self.r_ports = 1
-      self.w_ports = 0
-    elif self.port_config == '1r1rw':
-      self.rw_ports = 1
-      self.r_ports = 1
-      self.w_ports = 0
-    elif self.port_config == '1r1w':
-      self.rw_ports = 0
-      self.r_ports = 1
-      self.w_ports = 1
-    elif self.port_config == '2r1w':
-      self.rw_ports = 0
-      self.r_ports = 2
-      self.w_ports = 1
-    elif self.port_config == '1rw1r':
-      self.rw_ports = 1
-      self.r_ports = 1
-      self.w_ports = 0
-    else: # 1rw
-      self.rw_ports = 1
-      self.r_ports = 0
-      self.w_ports = 0
+    # Naive attempt for setting up multiple banks. 
+    # Splices either width or depth based on 'banking_technique'
+    if self.num_banks > 1 and self.num_banks % 2 == 0:
+      if self.banking_technique == 'depth':
+        self.depth = math.ceil(self.depth / self.num_banks)
+        sram_data['depth'] = self.depth 
+      elif self.banking_technique == 'width':
+        self.width_in_bits = math.ceil(self.width_in_bits / self.num_banks)
+        sram_data['width'] = self.width_in_bits
+      else:
+        raise Exception("Unsupported banking type '{}', use either 'width' or 'depth' ('width' is DEFAULT)".format(sram_data['banking_technique']))
+    self.r_ports                            = int(sram_data['ports'].get('r', 0))
+    self.w_ports                            = int(sram_data['ports'].get('w', 0))
+    self.rw_ports                           = int(sram_data['ports'].get('rw', 0))
     
     # Write granularity (default to bit-level if not specified)
     self.write_granularity = int(sram_data.get('write_granularity', 1))
@@ -61,10 +49,7 @@ class Memory:
     # Options: 'write_first' (write-through), 'read_first' (no-change), 'write_through' (combinational)
     self.write_mode    = str(sram_data.get('write_mode', 'write_first'))
 
-    # clk_ct array contains the amount of clks for rw, r, and w ports respectively
-    self.port_clks = [ list(map(int, re.findall(r'-?\d+', clk_grp))) for clk_grp in re.findall(r'\[[^\]]*\]|(?<=,)\s*(?=,|$)|^\s*(?=,|$)', 
-                        sram_data.get('port_clks', '[1], [0], [0]').strip())]
-    print(self.port_clks)
+
     self.width_in_bytes = math.ceil(self.width_in_bits / 8.0)
     self.total_size     = self.width_in_bytes * self.depth
     if output_dir: # Output dir was set by command line option
@@ -74,7 +59,9 @@ class Memory:
       self.results_dir = os.sep.join([os.getcwd(), 'results', self.name])
     if not os.path.exists( self.results_dir ):
       os.makedirs( self.results_dir )
-  
+    
+    print(f'\n\n\n***************************Run for {self.name}***************************\n\n\n')
+
     if (process.tech_nm == 7):
       self.tech_node_nm                = 7 
       self.associativity               = 1 
@@ -83,26 +70,71 @@ class Memory:
       self.standby_leakage_per_bank_mW =  0.1289
       self.fo4_ps = 9.0632
       self.height_um, self.width_um    = get_macro_dimensions(process, sram_data)
+      
+      overall_mult = 1
+      wmask_mult = 0 if self.has_wmask == False else 0.045
+      # Height and Width Multiplier based on the amount of r, w, and rw ports, 
+      # ASSUMING there is more than 1 port
+      if int(sram_data['ports']['r']) + int(sram_data['ports']['rw']) + int(sram_data['ports']['w']) > 1:
+        r_port_mult = int(sram_data['ports']['r']) * 0.3
+        # Add wmask_mult to per-port multipliers for w and rw
+        w_port_mult = int(sram_data['ports']['w']) * (0.25 + wmask_mult)  
+        rw_port_mult = int(sram_data['ports']['rw']) * (0.4 + wmask_mult)
+        overall_mult = (1 + r_port_mult + w_port_mult + rw_port_mult)
+      self.height_um = self.height_um * (overall_mult + wmask_mult)
+      self.width_um = self.width_um * (overall_mult + wmask_mult)
       self.pin_dynamic_power_mW = 0.0013449
     else: 
+      if output_dir: # Output dir was set by command line option
+        p = str(Path(output_dir).expanduser().resolve(strict=False))
+        self.results_dir = os.sep.join([p, self.name])
+      else:
+        self.results_dir = os.sep.join([os.getcwd(), 'results', self.name])
+      if not os.path.exists( self.results_dir ):
+        os.makedirs( self.results_dir )
       if cacti_dir:
         self.cacti_dir = cacti_dir
       else:
         self.cacti_dir = os.environ['CACTI_BUILD_DIR']
-      self.__run_cacti()
-      with open( os.sep.join([self.results_dir, 'cacti.cfg.out']), 'r' ) as fid:
-        lines = [line for line in fid]
-      cacti_data = lines[-1].split(',')
-      self.tech_node_nm                = int(cacti_data[0])
-      self.capacity_bytes              = int(cacti_data[1])
-      self.associativity               = int(cacti_data[2])
-      self.access_time_ns              = float(cacti_data[4])
-      self.cycle_time_ns               = float(cacti_data[5])
-      self.pin_dynamic_power_mW        = float(cacti_data[8])
-      self.standby_leakage_per_bank_mW = float(cacti_data[9])
-      self.fo4_ps                      = float(cacti_data[11])
-      self.width_um                    = float(cacti_data[12])
-      self.height_um                   = float(cacti_data[13])
+
+      # IF size is unavailable for tag org (cacti error), try to generate 
+      # as close to the same config that is configurable 
+      original_width_in_bits = self.width_in_bits
+      original_width_in_bytes = self.width_in_bytes
+      while True:
+        try:
+          self.__run_cacti()
+          with open( os.sep.join([self.results_dir, 'cacti.cfg.out']), 'r' ) as fid:
+            lines = [line for line in fid]
+            cacti_data = lines[-1].split(',')
+          self.tech_node_nm                = int(cacti_data[0])
+          self.associativity               = int(cacti_data[2])
+          self.access_time_ns              = float(cacti_data[4])
+          self.cycle_time_ns               = float(cacti_data[5])
+          self.pin_dynamic_power_mW        = float(cacti_data[8])
+          self.standby_leakage_per_bank_mW = float(cacti_data[9])
+          self.fo4_ps                      = float(cacti_data[11])
+          self.width_um                    = float(cacti_data[12])
+          self.height_um                   = float(cacti_data[13])
+        except FileNotFoundError:
+          # IF no size within reason is available, terminate as usual
+          print(f"Byte width of {self.width_in_bytes} doesn't work with cacti. Attempting again with different values.")
+          self.width_in_bits = self.width_in_bits + 8
+          self.width_in_bytes = math.ceil(self.width_in_bits / 8.0)
+          self.total_size     = self.width_in_bytes * self.depth
+          # Raise the same error, as the config doesn't work even within reason
+          if self.width_in_bits >= original_width_in_bits + (8 * 2):
+            raise
+        else:
+          break
+      # Revert the width values back for correct pin count (also try to size width of physical macro according to OG size)
+      if self.width_in_bits != original_width_in_bits:
+        self.width_um = self.width_um * original_width_in_bits / self.width_in_bits
+        print("\n\n\n*********************INFO******************************\n\n\n")
+        print(f"Re-calculating width using ratio of original width in bits ({original_width_in_bits}) to the width in bits fed to cacti ({self.width_in_bits})")
+        self.width_in_bits = original_width_in_bits
+        self.width_in_bytes = original_width_in_bytes
+
       
     
     self.cap_input_pf = 0.005
@@ -110,8 +142,6 @@ class Memory:
     self.tech_node_um = self.tech_node_nm / 1000.0
 
     print(f'Original {self.name} size = {self.width_um} x {self.height_um}')
-    print(f'Port configuration: {self.port_config}')
-    print(f'Write granularity: {self.write_granularity} bits')
     
     # Adjust to snap
     self.width_um = (math.ceil((self.width_um*1000.0)/self.process.snapWidth_nm)*self.process.snapWidth_nm)/1000.0
@@ -119,8 +149,7 @@ class Memory:
     self.area_um2 = self.width_um * self.height_um
 
     #self.pin_dynamic_power_mW = (0.5 * self.cap_input_pf * (float(self.process.voltage)**2))*1e9 ;# P = 0.5*CV^2
-    
-
+  
     self.t_setup_ns = 0.050  ;# arbitrary 50ps setup
     self.t_hold_ns  = 0.050  ;# arbitrary 50ps hold
 
