@@ -16,11 +16,12 @@ def generate_verilog( mem ):
     num_rport         = mem.r_ports
     num_wport         = mem.w_ports
     num_rwport        = mem.rw_ports
-    num_wmask         = mem.w_ports + mem.rw_ports
     write_mode        = mem.write_mode
-    has_wmask         = True
+    has_wmask         = mem.has_wmask
     write_granularity = mem.write_granularity
-    
+    # Bit-width of the per-port wmask bus (byte-granular -> bits/8, per-bit -> bits).
+    num_wmask         = math.ceil(bits / write_granularity) if has_wmask else 0
+
 
     V_file = open(os.sep.join([mem.results_dir, name + '.v']), 'w')
 
@@ -105,10 +106,11 @@ def generate_verilog_bb( mem ):
     num_rport         = mem.r_ports
     num_wport         = mem.w_ports
     num_rwport        = mem.rw_ports
-    num_wmask         = mem.w_ports + mem.rw_ports
     write_mode        = mem.write_mode
-    has_wmask         = True
+    has_wmask         = mem.has_wmask
     write_granularity = mem.write_granularity
+    # Bit-width of the per-port wmask bus (byte-granular -> bits/8, per-bit -> bits).
+    num_wmask         = math.ceil(bits / write_granularity) if has_wmask else 0
 
 
     V_file = open(os.sep.join([mem.results_dir, name + '.bb.v']), 'w')

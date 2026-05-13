@@ -36,6 +36,8 @@ def generate_lef( mem ):
     num_wport   = mem.w_ports
     num_rport   = mem.r_ports
     addr_width  = int(math.ceil(math.log2(mem.depth)))
+    # Per-port write-mask bus width (e.g. byte-granular -> bits/8, per-bit -> bits).
+    wmask_bits  = math.ceil(bits / mem.write_granularity) if mem.has_wmask else 0
 
     # Process parameters
     supply_pin_width = mem.process.PSwidth_um*4
@@ -68,7 +70,7 @@ def generate_lef( mem ):
     print(f'Number of horizontal tracks available: {number_of_horizontal_tracks_available}')
     print(f'Height is {h}, width is {w}')
 
-    number_of_left_pins = math.ceil(((num_wport + num_rwport) * (2 if mem.has_wmask else 1)  * bits) / 4) + math.ceil((num_rport + num_wport + num_rwport) * addr_width / 2)
+    number_of_left_pins = math.ceil(((num_wport + num_rwport) * (bits + wmask_bits)) / 4) + math.ceil((num_rport + num_wport + num_rwport) * addr_width / 2)
     number_of_spare_left_tracks = number_of_vertical_tracks_available - number_of_left_pins
     print(f'Number of spare left tracks: {number_of_spare_left_tracks}')
     left_track_count = count_tracks(number_of_spare_left_tracks, number_of_vertical_tracks_available, number_of_left_pins)
@@ -76,7 +78,7 @@ def generate_lef( mem ):
     left_group_pitch = math.floor((number_of_vertical_tracks_available - number_of_left_pins*left_track_count) / 2)*mem.process.LRpitch_um 
     print(f"Left track_count complete. pitch is {left_group_pitch}")
 
-    number_of_right_pins =  math.ceil(((num_wport + num_rwport) * (2 if mem.has_wmask else 1) * bits) / 4)  + math.ceil((num_rport + num_wport + num_rwport) * addr_width / 2)
+    number_of_right_pins =  math.ceil(((num_wport + num_rwport) * (bits + wmask_bits)) / 4)  + math.ceil((num_rport + num_wport + num_rwport) * addr_width / 2)
     number_of_spare_right_tracks = number_of_vertical_tracks_available - number_of_right_pins
     print(f'Number of spare right tracks: {number_of_spare_right_tracks}')
     right_track_count = count_tracks(number_of_spare_right_tracks, number_of_vertical_tracks_available, number_of_right_pins)
@@ -84,7 +86,7 @@ def generate_lef( mem ):
     right_group_pitch = math.floor((number_of_vertical_tracks_available - number_of_right_pins*right_track_count) / 2)*mem.process.LRpitch_um 
     print(f"Right track_count complete. pitch is {right_group_pitch}")
 
-    number_of_top_pins = math.ceil((num_rport + num_rwport) * bits / 2) + num_rport * 2 + (num_wport + num_rwport) * 3 + math.ceil(((num_wport + num_rwport) * (1 if mem.has_wmask else 0)  * bits)/2)
+    number_of_top_pins = math.ceil((num_rport + num_rwport) * bits / 2) + num_rport * 2 + (num_wport + num_rwport) * 3 + math.ceil(((num_wport + num_rwport) * wmask_bits) / 2)
     number_of_spare_top_tracks = number_of_horizontal_tracks_available - number_of_top_pins
     print(f'Number of spare top tracks: {number_of_spare_top_tracks}')
     top_track_count = count_tracks(number_of_spare_top_tracks, number_of_horizontal_tracks_available, number_of_top_pins)
@@ -125,7 +127,6 @@ def generate_lef( mem ):
     x_top_step    = x_offset
     x_bottom_step = x_offset
     if (mem.has_wmask):
-        wmask_bits = math.ceil(bits / mem.write_granularity)
         for ct in range(num_rwport) :
             for i in range(math.ceil(wmask_bits/4)):
                 y_left_step  = lef_add_pin( fid, mem, f'rw{ct}_wmask_in[{i}]', True, 'L', y_left_step, left_pin_pitch )
@@ -139,7 +140,7 @@ def generate_lef( mem ):
                 y_left_step  = lef_add_pin( fid, mem, f'w{ct}_wmask_in[{i}]', True, 'L', y_left_step, left_pin_pitch )
             for i in range(math.ceil(wmask_bits/4), math.ceil(wmask_bits/2)):
                 y_right_step = lef_add_pin( fid, mem, f'w{ct}_wmask_in[{i}]', True, 'R', y_right_step, right_pin_pitch )
-            for i in range(math.ceil(wmask_bits/2), bits):
+            for i in range(math.ceil(wmask_bits/2), wmask_bits):
                 x_top_step   = lef_add_pin( fid, mem, f'w{ct}_wmask_in[{i}]', True, 'T', x_top_step, top_pin_pitch )
            
     

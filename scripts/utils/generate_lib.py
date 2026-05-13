@@ -160,12 +160,13 @@ def generate_lib( mem ):
     LIB_file.write( '        bit_to : 0 ;\n')
     LIB_file.write( '        downto : true ;\n')
     LIB_file.write( '    }\n')
-    if mem.has_wmask: 
+    if mem.has_wmask:
+        wmask_bits = max(1, bits // mem.write_granularity)
         LIB_file.write( '    type (%s_WMASK) {\n' % name)
         LIB_file.write( '        base_type : array ;\n')
         LIB_file.write( '        data_type : bit ;\n')
-        LIB_file.write( '        bit_width : %d;\n' % (max(1, bits // 8)))
-        LIB_file.write( '        bit_from : %d;\n' % (max(1, bits // 8)-1))
+        LIB_file.write( '        bit_width : %d;\n' % wmask_bits)
+        LIB_file.write( '        bit_from : %d;\n' % (wmask_bits - 1))
         LIB_file.write( '        bit_to : 0 ;\n')
         LIB_file.write( '        downto : true ;\n')
         LIB_file.write( '    }\n')
@@ -802,7 +803,7 @@ def generate_lib( mem ):
     if (mem.has_wmask):
       for i in range(int(num_rwport)) :
         LIB_file.write('    bus(rw%s_wmask_in)   {\n' % (i))
-        LIB_file.write('        bus_type : %s_DATA;\n' % name)
+        LIB_file.write('        bus_type : %s_WMASK;\n' % name)
         LIB_file.write('        memory_write() {\n')
         LIB_file.write('            address : rw%s_addr_in;\n' % (i))
         LIB_file.write('            clocked_on : "rw%s_clk";\n' % (i))
@@ -875,7 +876,7 @@ def generate_lib( mem ):
       
       for i in range(int(num_wport)) :
         LIB_file.write('    bus(w%s_wmask_in)   {\n' % (i))
-        LIB_file.write('        bus_type : %s_DATA;\n' % name)
+        LIB_file.write('        bus_type : %s_WMASK;\n' % name)
         LIB_file.write('        memory_write() {\n')
         LIB_file.write('            address : w%s_addr_in;\n' % (i))
         LIB_file.write('            clocked_on : "w%s_clk";\n' % (i))

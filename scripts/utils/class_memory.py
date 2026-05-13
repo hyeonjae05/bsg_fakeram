@@ -42,8 +42,10 @@ class Memory:
     self.w_ports                            = int(sram_data['ports'].get('w', 0))
     self.rw_ports                           = int(sram_data['ports'].get('rw', 0))
     
-    # Write granularity (default to bit-level if not specified)
-    self.write_granularity = int(sram_data.get('write_granularity', 1))
+    # Write granularity (default to byte-level if not specified).
+    # 8 = one mask bit per data byte (typical SRAM byte-write enable).
+    # 1 = one mask bit per data bit (per-bit write mask).
+    self.write_granularity = int(sram_data.get('write_granularity', 8))
     
     # Write mode (default to write-first if not specified)
     # Options: 'write_first' (write-through), 'read_first' (no-change), 'write_through' (combinational)
