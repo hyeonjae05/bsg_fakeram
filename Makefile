@@ -2,9 +2,9 @@ export TOP_DIR :=$(shell git rev-parse --show-toplevel)
 
 export CACTI_BUILD_DIR := $(TOP_DIR)/tools/cacti
 
-CONFIG := $(TOP_DIR)/example_cfgs/freepdk45.cfg
+CONFIG := $(TOP_DIR)/example_cfgs/asap7_sauria01.cfg
 
-OUT_DIR := $(TOP_DIR)/results
+OUT_DIR := $(TOP_DIR)/results/asap7
 
 run:
 	./scripts/run.py $(CONFIG) --output_dir $(OUT_DIR)
